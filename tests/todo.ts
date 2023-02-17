@@ -1,16 +1,22 @@
 import * as anchor from '@project-serum/anchor';
 import { Program } from '@project-serum/anchor';
+import { publicKey } from '@project-serum/anchor/dist/cjs/utils';
+import {
+  getAccount,
+  getAssociatedTokenAddress,
+  getAssociatedTokenAddressSync,
+} from '@solana/spl-token';
 import { BN } from 'bn.js';
 import { expect } from 'chai';
-import { Todo } from '../target/types/todo';
+import { Todo, IDL } from '../target/types/todo';
 
-describe('todo', () => {
+describe('todo', async () => {
   const provider = anchor.AnchorProvider.env();
   anchor.setProvider(provider);
 
   const program = anchor.workspace.Todo as Program<Todo>;
 
-  const [counterPda] = anchor.web3.PublicKey.findProgramAddressSync(
+  const [userAccountPda] = anchor.web3.PublicKey.findProgramAddressSync(
     [provider.wallet.publicKey.toBuffer()],
     program.programId
   );
@@ -22,75 +28,80 @@ describe('todo', () => {
 
   const todo = 'hello world';
 
-  // it('todo is added', async () => {
-  //   await program.methods
-  //     .initializeUser()
-  //     .accounts({ counter: counterPda })
-  //     .rpc();
+  const [mint] = anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from('mint')],
+    program.programId
+  );
 
-  //   await program.methods
-  //     .createTodo(todo)
-  //     .accounts({ counter: counterPda, todo: todoPda })
-  //     .rpc();
+  const [authority] = anchor.web3.PublicKey.findProgramAddressSync(
+    [Buffer.from('authority')],
+    program.programId
+  );
 
-  //   const counterAccount = await program.account.counter.fetch(counterPda);
-  //   const todoAccount = await program.account.todo.fetch(todoPda);
+  const ATA = await getAssociatedTokenAddress(mint, provider.wallet.publicKey);
 
-  //   expect(todoAccount.content).to.equal(todo);
-  //   expect(counterAccount.count.toNumber()).to.equal(1);
-  // });
+  it('initializes the mint', async () => {
+    await program.methods
+      .initializeTokenMint()
+      .accounts({ mint, authority })
+      .rpc();
+  });
 
-  it('todo is updated', async () => {
+  it('user is initialized', async () => {
     await program.methods
       .initializeUser()
-      .accounts({ counter: counterPda })
+      .accounts({ userAccount: userAccountPda, mint: mint, tokenAccount: ATA })
       .rpc();
+  });
 
+  it('todo is added', async () => {
     await program.methods
-      .createTodo(todo)
-      .accounts({ counter: counterPda, todo: todoPda })
+      .createTodo(todo, new anchor.BN(0))
+      .accounts({ userAccount: userAccountPda, todo: todoPda })
       .rpc();
 
-    const counterAccount = await program.account.counter.fetch(counterPda);
     const todoAccount = await program.account.todo.fetch(todoPda);
-
+    const freshUserAccount = await program.account.user.fetch(userAccountPda);
     expect(todoAccount.content).to.equal(todo);
-    expect(counterAccount.count.toNumber()).to.equal(1);
+    expect(freshUserAccount.todoCount.toNumber()).to.equal(1);
+  });
 
+  it('todo is updated', async () => {
     const newTodo = 'Updated todo';
     await program.methods
       .updateTodo(newTodo, new anchor.BN(0))
-      .accounts({ counter: counterPda, todo: todoPda })
+      .accounts({ userAccount: userAccountPda, todo: todoPda })
       .rpc();
 
     const updatedTodoAccount = await program.account.todo.fetch(todoPda);
-    console.log(
-      '🚀 ~ file: todo.ts:67 ~ it ~ updatedTodoAccount',
-      updatedTodoAccount.content
-    );
     expect(updatedTodoAccount.content).to.equal(newTodo);
   });
 
-  // it('deletes a todo', async () => {
-  //   await program.methods
-  //     .initializeUser()
-  //     .accounts({ counter: counterPda })
-  //     .rpc();
+  it('completes a todo', async () => {
+    await program.methods
+      .completeTodo(new BN(0))
+      .accounts({
+        todo: todoPda,
+        mint: mint,
+        tokenAccount: ATA,
+        authority: authority,
+      })
+      .rpc();
 
-  //   await program.methods
-  //     .createTodo(todo)
-  //     .accounts({ counter: counterPda, todo: todoPda })
-  //     .rpc();
+    const data = await program.account.todo.fetch(todoPda);
+    const accountData = await getAccount(provider.connection, ATA);
 
-  //   await program.methods
-  //     .deleteTodo(new anchor.BN(0))
-  //     .accounts({ todo: todoPda })
-  //     .rpc();
+    expect(Number(accountData.amount)).to.eq(5 * 10 ** 6);
+    expect(data.status).to.have.property('completed');
+  });
 
-  //   const endState = await program.account.counter.fetch(counterPda);
+  it('deletes a todo', async () => {
+    await program.methods
+      .deleteTodo(new anchor.BN(0))
+      .accounts({ todo: todoPda })
+      .rpc();
 
-  //   const data = await program.account.todo.fetchNullable(todoPda);
-  //   expect(data).to.equal(null);
-  //   expect(endState.count.toNumber()).to.equal(1);
-  // });
+    const data = await program.account.todo.fetchNullable(todoPda);
+    expect(data).to.equal(null);
+  });
 });

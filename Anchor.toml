@@ -8,8 +8,9 @@ todo = "2AmpRig1p78Morj1ASrihySWj1oAJhnDSQKRqV6zQpWi"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "Localnet"
+cluster = "localnet"
 wallet = "/Users/0xcen/.config/solana/id.json"
 
 [scripts]
 test = "yarn run ts-mocha -p ./tsconfig.json -t 1000000 tests/**/*.ts"
+
