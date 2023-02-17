@@ -9,7 +9,7 @@ use state::*;
 pub mod account;
 pub mod state;
 
-declare_id!("2AmpRig1p78Morj1ASrihySWj1oAJhnDSQKRqV6zQpWi");
+declare_id!("H2GTK5fQwrZPkT9QiZvujUad9UB1k69P7CCbLxiQHeGj");
 
 #[program]
 pub mod todo {
